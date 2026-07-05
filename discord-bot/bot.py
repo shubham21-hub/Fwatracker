@@ -45,15 +45,18 @@ async def run_lookup_in_thread(raw_tag: str):
 
 
 def build_embed(result) -> discord.Embed:
+    tag_link = f"[#{result.tag}]({result.source_url})"
+
     if not result.found:
         embed = discord.Embed(
             title=f"Player #{result.tag} not found",
-            description="No matching player was found on ChocolateClash for that tag.",
+            description="⚠️ No matching player was found on ChocolateClash for that tag.",
             color=discord.Color.orange(),
             url=result.source_url,
         )
-        embed.add_field(name="Tag", value=f"#{result.tag}", inline=True)
-        embed.add_field(name="Source", value=f"[View page]({result.source_url})", inline=True)
+        embed.add_field(name="🏷️ Tag", value=tag_link, inline=True)
+        embed.add_field(name="🔗 Source", value=f"[View page]({result.source_url})", inline=True)
+        embed.set_footer(text="Data from ChocolateClash (FWA)")
         return embed
 
     if result.banned:
@@ -70,12 +73,12 @@ def build_embed(result) -> discord.Embed:
         color=color,
         url=result.source_url,
     )
-    embed.add_field(name="Tag", value=f"#{result.tag}", inline=True)
+    embed.add_field(name="🏷️ Tag", value=tag_link, inline=True)
     if result.player_name:
-        embed.add_field(name="Name", value=result.player_name, inline=True)
+        embed.add_field(name="👤 Name", value=result.player_name, inline=True)
     embed.add_field(name="FWA Ban Status", value=status_value, inline=False)
-    embed.add_field(name="Source", value=f"[View on ChocolateClash]({result.source_url})", inline=False)
-    embed.set_footer(text="Data from cc.fwafarm.com")
+    embed.add_field(name="🔗 Source", value=f"[View on ChocolateClash]({result.source_url})", inline=False)
+    embed.set_footer(text="Data from ChocolateClash (FWA)")
     return embed
 
 
