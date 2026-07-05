@@ -1,0 +1,1 @@
+- [Cloudflare-protected sites: cloudscraper isn't always enough](cloudflare-scraping-limits.md) — cc.fwafarm.com's managed challenge blocked both `requests` and `cloudscraper`; design scrapers to fail gracefully, not assume bypass works.
