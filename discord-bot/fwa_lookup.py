@@ -44,7 +44,7 @@ REQUEST_HEADERS = {
 REQUEST_TIMEOUT = 15
 
 SCRAPERAPI_URL = "https://api.scraperapi.com/"
-SCRAPERAPI_TIMEOUT = 30
+SCRAPERAPI_TIMEOUT = 70
 
 TAG_RE = re.compile(r"^[A-Z0-9]{3,12}$")
 
