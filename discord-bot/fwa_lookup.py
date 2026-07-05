@@ -274,6 +274,9 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     )
 
 
+_NAME_TEXT_RE = re.compile(r"\bname\s*:\s*([^\s():]+)", re.IGNORECASE)
+
+
 def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
     for tag_name in ("h1", "h2", "h3"):
         el = soup.find(tag_name)
@@ -295,6 +298,15 @@ def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
     row_text = _find_labelled_row_text(soup, ("name", "player"))
     if row_text:
         return row_text
+
+    # Fall back to scanning the rendered page text for a "Name: X" pattern,
+    # since this site often renders member details as plain text rather
+    # than structured table rows/spans.
+    match = _NAME_TEXT_RE.search(page_text)
+    if match:
+        candidate = match.group(1).strip()
+        if candidate:
+            return candidate
 
     return None
 
@@ -318,14 +330,25 @@ def _find_labelled_row_text(soup: BeautifulSoup, labels: tuple[str, ...]) -> Opt
     return None
 
 
-def _extract_snippet_around(text: str, keyword: str, radius: int = 60) -> str:
+def _extract_snippet_around(text: str, keyword: str, radius: int = 40) -> str:
     lowered = text.lower()
     idx = lowered.find(keyword)
     if idx == -1:
-        return text[:120]
-    start = max(0, idx - radius)
-    end = min(len(text), idx + radius)
-    return text[start:end].strip()
+        snippet = text[:120]
+    else:
+        start = max(0, idx - radius)
+        end = min(len(text), idx + radius)
+        snippet = text[start:end].strip()
+
+    # The site often runs several unrelated fields together as plain text
+    # (e.g. "... ( BANNED! ) ( Open Ingame ) Name: X Current Clan: Y ..."),
+    # and the player's name is already shown in its own embed field, so
+    # trim off anything from "Name:" onward to avoid duplicating/cluttering.
+    name_idx = re.search(r"\bname\s*:", snippet, re.IGNORECASE)
+    if name_idx:
+        snippet = snippet[: name_idx.start()].strip()
+
+    return snippet or text[:120]
 
 
 def lookup_fwa_status(raw_tag: str) -> FwaLookupResult:
