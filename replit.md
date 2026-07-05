@@ -8,6 +8,7 @@ A Discord bot that looks up a Clash of Clans player tag on ChocolateClash (cc.fw
 - `discord-bot/fwa_lookup.py` — standalone lookup/parsing logic, testable via `python3 discord-bot/fwa_lookup.py <tag>`
 - `discord-bot/bot.py` — discord.py bot wiring up `!fwacheck` and `/fwacheck`
 - Required secret: `DISCORD_BOT_TOKEN` — Discord bot token (Replit Secrets)
+- Optional secrets: `SCRAPERAPI_KEY` (Cloudflare-bypass fallback), `SCRAPINGANT_API_KEY` (backup fallback if ScraperAPI errors/runs out of credits)
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000, unrelated scaffold artifact)
 - `pnpm run typecheck` — full typecheck across all JS/TS packages
 - `pnpm run build` — typecheck + build all packages
@@ -32,7 +33,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 
 - The bot lives in `discord-bot/` (plain Python, not a pnpm workspace artifact) since it's a background worker with no web preview.
 - Lookup logic (`fwa_lookup.py`) is separated from Discord wiring (`bot.py`) so the HTTP/parsing logic can be tested standalone without a Discord connection.
-- Fetch strategy: try plain `requests` first, detect a Cloudflare challenge page (403/503 or "Just a moment"-style markers), then retry with `cloudscraper`. If both are blocked, the command replies with a friendly "try again later" message instead of crashing.
+- Fetch strategy: try plain `requests` first, detect a Cloudflare challenge page (403/503 or "Just a moment"-style markers), then retry with `cloudscraper`, then ScraperAPI (render=true), then ScrapingAnt (browser=true) as a last-resort backup if ScraperAPI is unset/erroring/out of credits. If all are blocked, the command replies with a friendly "try again later" message instead of crashing.
 - HTML parsing is layered: look for structured elements (labelled table rows, elements with name/status/ban classes) first, then fall back to scanning visible page text for ban/not-found keywords, since the site's markup isn't guaranteed to stay stable.
 
 ## Product
@@ -47,6 +48,7 @@ _Populate as you build — explicit user instructions worth remembering across s
 ## Gotchas
 
 - cc.fwafarm.com is protected by a Cloudflare managed challenge that plain `requests` AND `cloudscraper` both failed to bypass during testing (confirmed 2026-07-05) — real-world lookups may frequently hit the "couldn't bypass Cloudflare" error path. This is expected/handled gracefully, not a bug.
+- ScrapingAnt (free-tier, browser=true, tried with/without residential+US proxy settings) also failed to bypass cc.fwafarm.com's Cloudflare challenge during testing (confirmed 2026-07-05), unlike ScraperAPI which does succeed. It's kept as a best-effort backup fallback (useful if ScraperAPI itself is down/out of credits) but is not proven to bypass this site's protection on its own.
 - The bot requires the `message_content` privileged intent for the `!fwacheck` prefix command to read message text — this must be enabled in the Discord Developer Portal under Bot > Privileged Gateway Intents, or the prefix command won't receive arguments (the slash command doesn't need it).
 
 ## Pointers

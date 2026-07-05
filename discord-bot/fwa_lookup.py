@@ -46,6 +46,9 @@ REQUEST_TIMEOUT = 15
 SCRAPERAPI_URL = "https://api.scraperapi.com/"
 SCRAPERAPI_TIMEOUT = 70
 
+SCRAPINGANT_URL = "https://api.scrapingant.com/v2/general"
+SCRAPINGANT_TIMEOUT = 70
+
 TAG_RE = re.compile(r"^[A-Z0-9]{3,12}$")
 
 CLOUDFLARE_MARKERS = (
@@ -122,6 +125,21 @@ def _fetch_with_scraperapi(url: str) -> tuple[int, str]:
     return resp.status_code, resp.text
 
 
+def _fetch_with_scrapingant(url: str) -> tuple[int, str]:
+    api_key = os.environ.get("SCRAPINGANT_API_KEY")
+    if not api_key:
+        raise FwaLookupError("SCRAPINGANT_API_KEY is not configured")
+
+    params = {
+        "url": url,
+        "x-api-key": api_key,
+        "browser": "true",
+    }
+    request_url = f"{SCRAPINGANT_URL}?{urllib.parse.urlencode(params)}"
+    resp = requests.get(request_url, timeout=SCRAPINGANT_TIMEOUT)
+    return resp.status_code, resp.text
+
+
 def fetch_member_page(tag: str) -> str:
     """
     Fetch the member.php page for the given (already normalized) tag.
@@ -132,6 +150,9 @@ def fetch_member_page(tag: str) -> str:
       3. ScraperAPI (with render=true), if (2) failed or returned a challenge
          page. Requires SCRAPERAPI_KEY to be set; skipped (with a warning)
          if it isn't.
+      4. ScrapingAnt (with browser=true), used as a backup if ScraperAPI
+         fails or its credits/quota are exhausted. Requires
+         SCRAPINGANT_API_KEY to be set; skipped (with a warning) if it isn't.
 
     Raises FwaLookupError if all available attempts fail.
     """
@@ -165,25 +186,53 @@ def fetch_member_page(tag: str) -> str:
         return html
 
     # Fall back to ScraperAPI
+    scraperapi_ok = False
     if not os.environ.get("SCRAPERAPI_KEY"):
         logger.warning(
             "SCRAPERAPI_KEY is not set; skipping ScraperAPI fallback for tag %s", tag
+        )
+    else:
+        try:
+            status_code, html = _fetch_with_scraperapi(url)
+            scraperapi_ok = True
+        except requests.RequestException:
+            logger.warning("ScraperAPI request failed for tag %s", tag, exc_info=True)
+            status_code, html = 0, ""
+
+        if scraperapi_ok and status_code >= 400:
+            # A 4xx from ScraperAPI often means the account is out of
+            # credits/quota (e.g. 403/429), not that the site itself is
+            # unreachable, so this is exactly when we want to try the
+            # ScrapingAnt backup below instead of giving up.
+            logger.warning(
+                "ScraperAPI returned status %s for tag %s: %s", status_code, tag, html[:300]
+            )
+            scraperapi_ok = False
+
+        if scraperapi_ok and not _looks_like_cloudflare_challenge(html, status_code):
+            return html
+
+    # Fall back to ScrapingAnt (used when ScraperAPI is unset, erroring, or
+    # its credits/quota have run out).
+    if not os.environ.get("SCRAPINGANT_API_KEY"):
+        logger.warning(
+            "SCRAPINGANT_API_KEY is not set; skipping ScrapingAnt fallback for tag %s", tag
         )
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
         )
 
     try:
-        status_code, html = _fetch_with_scraperapi(url)
+        status_code, html = _fetch_with_scrapingant(url)
     except requests.RequestException:
-        logger.warning("ScraperAPI request failed for tag %s", tag, exc_info=True)
+        logger.warning("ScrapingAnt request failed for tag %s", tag, exc_info=True)
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
         )
 
     if status_code >= 400:
         logger.warning(
-            "ScraperAPI returned status %s for tag %s: %s", status_code, tag, html[:300]
+            "ScrapingAnt returned status %s for tag %s: %s", status_code, tag, html[:300]
         )
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
