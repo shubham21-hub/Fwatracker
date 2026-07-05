@@ -83,15 +83,15 @@ async def handle_fwacheck(send, playertag: str) -> None:
     try:
         result = await run_lookup_in_thread(playertag)
     except ValueError as exc:
-        await send(f"⚠️ {exc}. Example: `#9GQCYLYRC` or `9GQCYLYRC`.")
+        await send(content=f"⚠️ {exc}. Example: `#9GQCYLYRC` or `9GQCYLYRC`.")
         return
     except FwaLookupError as exc:
         logger.warning("Lookup failed for %s: %s", playertag, exc)
-        await send(f"⚠️ Couldn't complete the lookup right now: {exc} Please try again later.")
+        await send(content=f"⚠️ Couldn't complete the lookup right now: {exc} Please try again later.")
         return
     except Exception:
         logger.exception("Unexpected error looking up %s", playertag)
-        await send("⚠️ Something went wrong while checking that player. Please try again later.")
+        await send(content="⚠️ Something went wrong while checking that player. Please try again later.")
         return
 
     embed = build_embed(result)
