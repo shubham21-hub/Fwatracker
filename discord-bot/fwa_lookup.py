@@ -10,8 +10,11 @@ tested from the command line:
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 import sys
+import urllib.parse
 from dataclasses import dataclass
 from typing import Optional
 
@@ -22,6 +25,8 @@ try:
     import cloudscraper
 except ImportError:  # pragma: no cover - cloudscraper should always be installed
     cloudscraper = None  # type: ignore[assignment]
+
+logger = logging.getLogger("fwa-bot.lookup")
 
 BASE_URL = "https://cc.fwafarm.com/cc_n/member.php"
 
@@ -37,6 +42,9 @@ REQUEST_HEADERS = {
 }
 
 REQUEST_TIMEOUT = 15
+
+SCRAPERAPI_URL = "https://api.scraperapi.com/"
+SCRAPERAPI_TIMEOUT = 30
 
 TAG_RE = re.compile(r"^[A-Z0-9]{3,12}$")
 
@@ -99,23 +107,45 @@ def _fetch_with_cloudscraper(url: str) -> tuple[int, str]:
     return resp.status_code, resp.text
 
 
+def _fetch_with_scraperapi(url: str) -> tuple[int, str]:
+    api_key = os.environ.get("SCRAPERAPI_KEY")
+    if not api_key:
+        raise FwaLookupError("SCRAPERAPI_KEY is not configured")
+
+    params = {
+        "api_key": api_key,
+        "url": url,
+        "render": "true",
+    }
+    request_url = f"{SCRAPERAPI_URL}?{urllib.parse.urlencode(params)}"
+    resp = requests.get(request_url, timeout=SCRAPERAPI_TIMEOUT)
+    return resp.status_code, resp.text
+
+
 def fetch_member_page(tag: str) -> str:
     """
     Fetch the member.php page for the given (already normalized) tag.
-    Tries plain requests first, falls back to cloudscraper if a Cloudflare
-    challenge page is detected. Raises FwaLookupError if both fail.
+
+    Order of attempts:
+      1. Plain `requests` with a browser User-Agent.
+      2. `cloudscraper`, if (1) failed or returned a Cloudflare challenge page.
+      3. ScraperAPI (with render=true), if (2) failed or returned a challenge
+         page. Requires SCRAPERAPI_KEY to be set; skipped (with a warning)
+         if it isn't.
+
+    Raises FwaLookupError if all available attempts fail.
     """
     url = f"{BASE_URL}?tag={tag}"
 
     try:
         status_code, html = _fetch_with_requests(url)
-    except requests.RequestException as exc:
+    except requests.RequestException:
         status_code, html = 0, ""
-        requests_error = exc
+        requests_ok = False
     else:
-        requests_error = None
+        requests_ok = True
 
-    if requests_error is None and not _looks_like_cloudflare_challenge(html, status_code):
+    if requests_ok and not _looks_like_cloudflare_challenge(html, status_code):
         if status_code >= 500:
             raise FwaLookupError(f"Site returned server error {status_code}")
         return html
@@ -123,17 +153,46 @@ def fetch_member_page(tag: str) -> str:
     # Fall back to cloudscraper
     try:
         status_code, html = _fetch_with_cloudscraper(url)
-    except Exception as exc:  # noqa: BLE001 - cloudscraper can raise various errors
+        cloudscraper_ok = True
+    except Exception:  # noqa: BLE001 - cloudscraper can raise various errors
+        logger.warning("cloudscraper fetch failed for tag %s", tag, exc_info=True)
+        status_code, html = 0, ""
+        cloudscraper_ok = False
+
+    if cloudscraper_ok and not _looks_like_cloudflare_challenge(html, status_code):
+        if status_code >= 400:
+            raise FwaLookupError(f"Site returned error {status_code}")
+        return html
+
+    # Fall back to ScraperAPI
+    if not os.environ.get("SCRAPERAPI_KEY"):
+        logger.warning(
+            "SCRAPERAPI_KEY is not set; skipping ScraperAPI fallback for tag %s", tag
+        )
         raise FwaLookupError(
-            "Could not reach the FWA lookup site (blocked by Cloudflare or unreachable)."
-        ) from exc
+            "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
+        )
+
+    try:
+        status_code, html = _fetch_with_scraperapi(url)
+    except requests.RequestException:
+        logger.warning("ScraperAPI request failed for tag %s", tag, exc_info=True)
+        raise FwaLookupError(
+            "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
+        )
+
+    if status_code >= 400:
+        logger.warning(
+            "ScraperAPI returned status %s for tag %s: %s", status_code, tag, html[:300]
+        )
+        raise FwaLookupError(
+            "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
+        )
 
     if _looks_like_cloudflare_challenge(html, status_code):
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
         )
-    if status_code >= 400:
-        raise FwaLookupError(f"Site returned error {status_code}")
 
     return html
 
