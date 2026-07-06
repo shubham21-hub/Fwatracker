@@ -303,9 +303,19 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
             banned = False
         elif any(keyword in lowered_text for keyword in _BAN_KEYWORDS):
             banned = True
-            reason = _extract_snippet_around(page_text, "ban")
         else:
             banned = False
+
+    if banned:
+        # Prefer the real ban explanation from the site's "Member Notes"
+        # table over a raw text snippet, which tends to include unrelated
+        # page boilerplate. If no structured note is found, it's better to
+        # show no reason at all than a garbled snippet.
+        note_reason = _extract_ban_reason(soup)
+        if note_reason:
+            reason = note_reason
+        elif reason is None or reason.lower() == "banned":
+            reason = None
 
     if player_name is None and banned is False and not any(
         keyword in lowered_text for keyword in _BAN_KEYWORDS
@@ -323,7 +333,37 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     )
 
 
-_NAME_TEXT_RE = re.compile(r"\bname\s*:\s*([^\s():]+)", re.IGNORECASE)
+_NAME_LABEL_RE = re.compile(r"^\s*names?\s*:?\s*$", re.IGNORECASE)
+_NAME_TEXT_RE = re.compile(
+    r"\bnames?\s*:\s*(.{1,40}?)(?=\s*(?:this player has changed|current clan|synchronized|donates|town hall|rank|$))",
+    re.IGNORECASE,
+)
+
+
+def _extract_name_after_label(soup: BeautifulSoup) -> Optional[str]:
+    """
+    cc.fwafarm.com renders the player name as plain text right after a
+    `<b>Name: </b>` (or `<b>Names: </b>` for players who have changed their
+    in-game name) label, not inside its own element. Walk the siblings
+    after that label up to the next tag/line break to reconstruct the full
+    name, including names containing spaces.
+    """
+    label_el = soup.find("b", string=_NAME_LABEL_RE)
+    if label_el is None:
+        return None
+
+    parts: list[str] = []
+    for sibling in label_el.next_siblings:
+        if getattr(sibling, "name", None) == "br":
+            break
+        if getattr(sibling, "name", None) is not None:
+            # Hit another element (e.g. a highlighted "name changed" notice)
+            # before a line break — stop, since that's not part of the name.
+            break
+        parts.append(str(sibling))
+
+    name = "".join(parts).strip()
+    return name or None
 
 
 def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
@@ -333,6 +373,10 @@ def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
             text = el.get_text(" ", strip=True)
             if text and len(text) < 60:
                 return text
+
+    label_name = _extract_name_after_label(soup)
+    if label_name:
+        return label_name
 
     name_el = soup.find(
         lambda el: el.name in ("td", "span", "div")
@@ -348,9 +392,9 @@ def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
     if row_text:
         return row_text
 
-    # Fall back to scanning the rendered page text for a "Name: X" pattern,
-    # since this site often renders member details as plain text rather
-    # than structured table rows/spans.
+    # Fall back to scanning the rendered page text for a "Name: X" / "Names: X"
+    # pattern, since this site often renders member details as plain text
+    # rather than structured table rows/spans.
     match = _NAME_TEXT_RE.search(page_text)
     if match:
         candidate = match.group(1).strip()
@@ -379,25 +423,37 @@ def _find_labelled_row_text(soup: BeautifulSoup, labels: tuple[str, ...]) -> Opt
     return None
 
 
-def _extract_snippet_around(text: str, keyword: str, radius: int = 40) -> str:
-    lowered = text.lower()
-    idx = lowered.find(keyword)
-    if idx == -1:
-        snippet = text[:120]
-    else:
-        start = max(0, idx - radius)
-        end = min(len(text), idx + radius)
-        snippet = text[start:end].strip()
+_MEMBER_NOTES_LABEL_RE = re.compile(r"member\s*notes", re.IGNORECASE)
+_MAX_REASON_LENGTH = 300
 
-    # The site often runs several unrelated fields together as plain text
-    # (e.g. "... ( BANNED! ) ( Open Ingame ) Name: X Current Clan: Y ..."),
-    # and the player's name is already shown in its own embed field, so
-    # trim off anything from "Name:" onward to avoid duplicating/cluttering.
-    name_idx = re.search(r"\bname\s*:", snippet, re.IGNORECASE)
-    if name_idx:
-        snippet = snippet[: name_idx.start()].strip()
 
-    return snippet or text[:120]
+def _extract_ban_reason(soup: BeautifulSoup) -> Optional[str]:
+    """
+    cc.fwafarm.com stores the actual ban explanation in a "Member Notes"
+    table (columns: Metadata / Note / Author) rather than anywhere near the
+    "BANNED!" marker itself. Pull the note text from the first data row's
+    highlighted "Note" cell (class "bigted"), skipping the header row.
+    """
+    label = soup.find(string=_MEMBER_NOTES_LABEL_RE)
+    if label is None:
+        return None
+
+    table = label.find_next("table")
+    if table is None:
+        return None
+
+    for row in table.find_all("tr"):
+        note_cell = row.find("td", class_="bigted")
+        if note_cell is None:
+            continue
+        text = note_cell.get_text(" ", strip=True)
+        if not text or text.lower() == "note":
+            continue
+        if len(text) > _MAX_REASON_LENGTH:
+            text = text[:_MAX_REASON_LENGTH].rstrip() + "…"
+        return text
+
+    return None
 
 
 def lookup_fwa_status(raw_tag: str) -> FwaLookupResult:
