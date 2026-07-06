@@ -63,6 +63,21 @@ CLOUDFLARE_MARKERS = (
     "enable javascript and cookies to continue",
 )
 
+_API_KEY_PARAM_RE = re.compile(r"(api_key|x-api-key)=[^&\s]+", re.IGNORECASE)
+
+
+def redact_api_key(text: str) -> str:
+    """
+    Redact API key query-param values from a string before it's logged.
+
+    requests.RequestException's str() representation typically includes the
+    full request URL, which for ScraperAPI (and ScrapingAnt, if ever called
+    with the key as a query param) embeds the live API key. Never log such
+    an exception (or any URL/params that may contain a key) without passing
+    it through this first.
+    """
+    return _API_KEY_PARAM_RE.sub(r"\1=***REDACTED***", text)
+
 
 class FwaLookupError(Exception):
     """Raised when the lookup cannot be completed (site down, blocked, etc.)."""
@@ -126,6 +141,11 @@ def _fetch_with_scraperapi(url: str) -> tuple[int, str]:
     if not api_key:
         raise FwaLookupError("SCRAPERAPI_KEY is not configured")
 
+    # ScraperAPI only supports authenticating via this `api_key` query
+    # param (no header-based auth option) — it *will* end up in
+    # `request_url` and therefore in any exception raised by this request.
+    # Never log that exception (or this URL) without running it through
+    # redact_api_key() first.
     params = {
         "api_key": api_key,
         "url": url,
@@ -141,13 +161,17 @@ def _fetch_with_scrapingant(url: str) -> tuple[int, str]:
     if not api_key:
         raise FwaLookupError("SCRAPINGANT_API_KEY is not configured")
 
+    # ScrapingAnt supports the key as an `x-api-key` HTTP header (in
+    # addition to a query param) — use the header so the key never appears
+    # in `request_url` at all, avoiding this whole class of leak.
     params = {
         "url": url,
-        "x-api-key": api_key,
         "browser": "true",
     }
     request_url = f"{SCRAPINGANT_URL}?{urllib.parse.urlencode(params)}"
-    resp = requests.get(request_url, timeout=SCRAPINGANT_TIMEOUT)
+    resp = requests.get(
+        request_url, headers={"x-api-key": api_key}, timeout=SCRAPINGANT_TIMEOUT
+    )
     return resp.status_code, resp.text
 
 
@@ -167,6 +191,13 @@ def fetch_member_page(tag: str) -> str:
 
     Raises FwaLookupError if all available attempts fail.
     """
+    # SSRF invariant: `tag` must already be validated by TAG_RE (via
+    # normalize_tag) before reaching this point — only that validated tag
+    # (never a raw user-supplied URL) is interpolated into BASE_URL below,
+    # or passed through as the `url` param to ScraperAPI/ScrapingAnt. If a
+    # future feature ever accepts a URL from a user, it must NOT be routed
+    # through this function or _fetch_with_scraperapi/_fetch_with_scrapingant.
+    assert TAG_RE.match(tag), "fetch_member_page requires an already-normalized tag"
     url = f"{BASE_URL}?tag={tag}"
 
     try:
@@ -210,8 +241,13 @@ def fetch_member_page(tag: str) -> str:
         try:
             status_code, html = _fetch_with_scraperapi(url)
             scraperapi_ok = True
-        except requests.RequestException:
-            logger.warning("ScraperAPI request failed for tag %s", tag, exc_info=True)
+        except requests.RequestException as exc:
+            # Never log this exception with exc_info=True (or str(exc)
+            # directly) — its message typically includes the full request
+            # URL, which embeds the live SCRAPERAPI_KEY. Always redact first.
+            logger.warning(
+                "ScraperAPI request failed for tag %s: %s", tag, redact_api_key(str(exc))
+            )
             status_code, html = 0, ""
 
         if scraperapi_ok and status_code >= 400:
@@ -220,7 +256,10 @@ def fetch_member_page(tag: str) -> str:
             # unreachable, so this is exactly when we want to try the
             # ScrapingAnt backup below instead of giving up.
             logger.warning(
-                "ScraperAPI returned status %s for tag %s: %s", status_code, tag, html[:300]
+                "ScraperAPI returned status %s for tag %s: %s",
+                status_code,
+                tag,
+                redact_api_key(html[:300]),
             )
             scraperapi_ok = False
 
@@ -239,8 +278,14 @@ def fetch_member_page(tag: str) -> str:
 
     try:
         status_code, html = _fetch_with_scrapingant(url)
-    except requests.RequestException:
-        logger.warning("ScrapingAnt request failed for tag %s", tag, exc_info=True)
+    except requests.RequestException as exc:
+        # ScrapingAnt's key is now sent via header (see
+        # _fetch_with_scrapingant), so it shouldn't appear in this
+        # exception's message — but redact defensively in case the request
+        # library or a proxy ever echoes back the full request context.
+        logger.warning(
+            "ScrapingAnt request failed for tag %s: %s", tag, redact_api_key(str(exc))
+        )
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
         )
@@ -250,7 +295,10 @@ def fetch_member_page(tag: str) -> str:
 
     if status_code >= 400:
         logger.warning(
-            "ScrapingAnt returned status %s for tag %s: %s", status_code, tag, html[:300]
+            "ScrapingAnt returned status %s for tag %s: %s",
+            status_code,
+            tag,
+            redact_api_key(html[:300]),
         )
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."

@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 import discord
 from discord import app_commands
@@ -38,12 +39,16 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
+# Bounded pool for blocking lookup I/O so a burst of concurrent /fwacheck
+# calls can't spin up unbounded threads on the Replit instance.
+_lookup_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="fwa-lookup")
+
 
 async def run_lookup_in_thread(raw_tag: str):
     """lookup_fwa_status does blocking network I/O; run it off the event loop."""
     loop = asyncio.get_running_loop()
     return await asyncio.wait_for(
-        loop.run_in_executor(None, lookup_fwa_status, raw_tag),
+        loop.run_in_executor(_lookup_executor, lookup_fwa_status, raw_tag),
         timeout=LOOKUP_TIMEOUT_SECONDS,
     )
 
@@ -62,10 +67,31 @@ def make_sender(reply_fn):
     return send
 
 
+def safe_field(text: str, limit: int) -> str:
+    """
+    Escape Discord markdown and enforce field/title length limits on any
+    text that originates from scraped HTML (e.g. result.player_name,
+    result.reason). Scraped content is untrusted: if the source site were
+    ever compromised or the scraper latched onto the wrong DOM node, this
+    stops it from rendering spoofed links/markdown in the bot's embeds, and
+    keeps us under Discord's hard limits (256 chars for titles/field names,
+    1024 for field values) so we don't raise discord.HTTPException.
+    Do NOT use this on strings we construct ourselves (e.g. tag_link,
+    result.source_url) — they aren't scraped, so escaping them is unnecessary.
+    """
+    return discord.utils.escape_markdown(text)[:limit]
+
+
 def build_embed(result) -> discord.Embed:
+    # tag_link/source_url are built from our own normalized tag, not
+    # scraped from the page, so they intentionally aren't run through
+    # safe_field().
     tag_link = f"[#{result.tag}]({result.source_url})"
 
     if not result.found:
+        # Not-found path currently never echoes scraped text back into the
+        # embed — if that ever changes, run any such text through
+        # safe_field() first, same as the found path below.
         embed = discord.Embed(
             title=f"Player #{result.tag} not found",
             description="⚠️ No matching player was found on ChocolateClash for that tag.",
@@ -81,19 +107,22 @@ def build_embed(result) -> discord.Embed:
         color = discord.Color.red()
         status_value = "🚫 Banned"
         if result.reason:
-            status_value += f"\n{result.reason}"
+            status_value += f"\n{safe_field(result.reason, 1000)}"
     else:
         color = discord.Color.green()
         status_value = "✅ Not banned"
+    status_value = status_value[:1024]
+
+    safe_name = safe_field(result.player_name, 256) if result.player_name else None
 
     embed = discord.Embed(
-        title=result.player_name or f"Player #{result.tag}",
+        title=safe_name or f"Player #{result.tag}",
         color=color,
         url=result.source_url,
     )
     embed.add_field(name="🏷️ Tag", value=tag_link, inline=True)
     if result.player_name:
-        embed.add_field(name="👤 Name", value=result.player_name, inline=True)
+        embed.add_field(name="👤 Name", value=safe_field(result.player_name, 1024), inline=True)
     embed.add_field(name="FWA Ban Status", value=status_value, inline=False)
     embed.add_field(name="🔗 Source", value=f"[View on ChocolateClash]({result.source_url})", inline=False)
     embed.set_footer(text="Data from ChocolateClash (FWA)")

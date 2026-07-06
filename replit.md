@@ -35,6 +35,7 @@ _Populate as you build — short repo map plus pointers to the source-of-truth f
 - Lookup logic (`fwa_lookup.py`) is separated from Discord wiring (`bot.py`) so the HTTP/parsing logic can be tested standalone without a Discord connection.
 - Fetch strategy: try plain `requests` first, detect a Cloudflare challenge page (403/503 or "Just a moment"-style markers), then retry with `cloudscraper`, then ScraperAPI (render=true), then ScrapingAnt (browser=true) as a last-resort backup if ScraperAPI is unset/erroring/out of credits. If all are blocked, the command replies with a friendly "try again later" message instead of crashing.
 - HTML parsing is layered: look for structured elements (labelled table rows, elements with name/status/ban classes) first, then fall back to scanning visible page text for ban/not-found keywords, since the site's markup isn't guaranteed to stay stable.
+- Security conventions: (1) API keys sent to fallback scrapers must use header auth when the provider supports it (ScrapingAnt uses the `x-api-key` header); when a provider only supports query-param auth (ScraperAPI), any exception or URL that could contain the key must be passed through `redact_api_key()` before logging — never `exc_info=True` on those exceptions. (2) Any scraped text (player name, ban reason) placed into a Discord embed must go through `bot.py`'s `safe_field()` helper (markdown-escape + length cap) before use, since it's untrusted content from a third-party site.
 
 ## Product
 
