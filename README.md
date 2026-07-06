@@ -19,10 +19,15 @@ limited to one lookup every 10 seconds.
 2. It fetches the player's member page on `cc.fwafarm.com`, trying in order:
    - a plain HTTP request,
    - a `cloudscraper` request (to get past basic Cloudflare challenges),
+<<<<<<< HEAD
    - a ScraperAPI request with JS rendering enabled (Cloudflare bypass
      fallback),
    - a ScrapingAnt request (backup used if ScraperAPI is unavailable, errors,
      or its credits/quota run out).
+=======
+   - a ScraperAPI request with JS rendering enabled (further Cloudflare
+     bypass fallback).
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 3. It parses the page for the player's name and ban status and replies with
    a formatted Discord embed (green = not banned, red = banned).
 
@@ -38,9 +43,12 @@ If all fetch strategies are blocked, the bot replies with a friendly
   intent enabled, required for the `!fwacheck` prefix command)
 - A [ScraperAPI](https://www.scraperapi.com/) account/API key (used as a
   fallback when Cloudflare blocks the direct/`cloudscraper` requests)
+<<<<<<< HEAD
 - A [ScrapingAnt](https://app.scrapingant.com/register) account/API key
   (free tier, used as a backup if ScraperAPI is unavailable or its
   credits/quota run out)
+=======
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 ### Install dependencies
 
@@ -53,11 +61,18 @@ pip install -r discord-bot/requirements.txt
 Set these as environment variables / Replit Secrets — never commit them to
 the repo:
 
+<<<<<<< HEAD
 | Variable              | Description                                                        |
 | --------------------- | ------------------------------------------------------------------ |
 | `DISCORD_BOT_TOKEN`   | Discord bot token from the Discord Developer Portal                |
 | `SCRAPERAPI_KEY`      | ScraperAPI API key, used as a Cloudflare-bypass fallback            |
 | `SCRAPINGANT_API_KEY` | ScrapingAnt API key, used as a backup if ScraperAPI is unavailable or out of credits |
+=======
+| Variable            | Description                                                        |
+| ------------------- | ------------------------------------------------------------------ |
+| `DISCORD_BOT_TOKEN` | Discord bot token from the Discord Developer Portal                |
+| `SCRAPERAPI_KEY`    | ScraperAPI API key, used as a Cloudflare-bypass fallback            |
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 ### Run the bot
 
@@ -87,6 +102,7 @@ discord-bot/
 ## Known limitations
 
 - `cc.fwafarm.com` is protected by a Cloudflare managed challenge. Even with
+<<<<<<< HEAD
   the `cloudscraper`, ScraperAPI, and ScrapingAnt fallbacks, some lookups may
   still fail — this is handled gracefully with a "try again later" reply
   rather than a crash.
@@ -99,3 +115,11 @@ discord-bot/
   ScraperAPI, which did succeed. It's still wired in as a best-effort backup
   (e.g. useful if ScraperAPI's account itself is unavailable), but it is not
   a guaranteed working fallback for this specific site.
+=======
+  the `cloudscraper` and ScraperAPI fallbacks, some lookups may still fail —
+  this is handled gracefully with a "try again later" reply rather than a
+  crash.
+- ScraperAPI's rendering mode can occasionally require a higher-tier
+  (premium/ultra-premium) proxy plan for this specific domain; on lower-tier
+  plans this fallback may not always succeed.
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd

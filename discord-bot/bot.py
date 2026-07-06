@@ -15,13 +15,20 @@ import asyncio
 import logging
 import os
 import sys
+<<<<<<< HEAD
 from concurrent.futures import ThreadPoolExecutor
+=======
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+<<<<<<< HEAD
 from fwa_lookup import FwaLookupError, SCRAPERAPI_TIMEOUT, lookup_fwa_status
+=======
+from fwa_lookup import FwaLookupError, lookup_fwa_status
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,21 +39,28 @@ logger = logging.getLogger("fwa-bot")
 TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 
 COOLDOWN_SECONDS = 10.0
+<<<<<<< HEAD
 LOOKUP_TIMEOUT_SECONDS = SCRAPERAPI_TIMEOUT + 5
+=======
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
+<<<<<<< HEAD
 # Bounded pool for blocking lookup I/O so a burst of concurrent /fwacheck
 # calls can't spin up unbounded threads on the Replit instance.
 _lookup_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="fwa-lookup")
 
+=======
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 async def run_lookup_in_thread(raw_tag: str):
     """lookup_fwa_status does blocking network I/O; run it off the event loop."""
     loop = asyncio.get_running_loop()
+<<<<<<< HEAD
     return await asyncio.wait_for(
         loop.run_in_executor(_lookup_executor, lookup_fwa_status, raw_tag),
         timeout=LOOKUP_TIMEOUT_SECONDS,
@@ -92,6 +106,15 @@ def build_embed(result) -> discord.Embed:
         # Not-found path currently never echoes scraped text back into the
         # embed — if that ever changes, run any such text through
         # safe_field() first, same as the found path below.
+=======
+    return await loop.run_in_executor(None, lookup_fwa_status, raw_tag)
+
+
+def build_embed(result) -> discord.Embed:
+    tag_link = f"[#{result.tag}]({result.source_url})"
+
+    if not result.found:
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         embed = discord.Embed(
             title=f"Player #{result.tag} not found",
             description="⚠️ No matching player was found on ChocolateClash for that tag.",
@@ -107,6 +130,7 @@ def build_embed(result) -> discord.Embed:
         color = discord.Color.red()
         status_value = "🚫 Banned"
         if result.reason:
+<<<<<<< HEAD
             status_value += f"\n{safe_field(result.reason, 1000)}"
     else:
         color = discord.Color.green()
@@ -117,12 +141,25 @@ def build_embed(result) -> discord.Embed:
 
     embed = discord.Embed(
         title=safe_name or f"Player #{result.tag}",
+=======
+            status_value += f"\n{result.reason}"
+    else:
+        color = discord.Color.green()
+        status_value = "✅ Not banned"
+
+    embed = discord.Embed(
+        title=result.player_name or f"Player #{result.tag}",
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         color=color,
         url=result.source_url,
     )
     embed.add_field(name="🏷️ Tag", value=tag_link, inline=True)
     if result.player_name:
+<<<<<<< HEAD
         embed.add_field(name="👤 Name", value=safe_field(result.player_name, 1024), inline=True)
+=======
+        embed.add_field(name="👤 Name", value=result.player_name, inline=True)
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     embed.add_field(name="FWA Ban Status", value=status_value, inline=False)
     embed.add_field(name="🔗 Source", value=f"[View on ChocolateClash]({result.source_url})", inline=False)
     embed.set_footer(text="Data from ChocolateClash (FWA)")
@@ -135,10 +172,13 @@ async def handle_fwacheck(send, playertag: str) -> None:
     except ValueError as exc:
         await send(content=f"⚠️ {exc}. Example: `#9GQCYLYRC` or `9GQCYLYRC`.")
         return
+<<<<<<< HEAD
     except asyncio.TimeoutError:
         logger.warning("Lookup timed out for %s", playertag)
         await send(content="⚠️ That lookup took too long. Please try again later.")
         return
+=======
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     except FwaLookupError as exc:
         logger.warning("Lookup failed for %s: %s", playertag, exc)
         await send(content=f"⚠️ Couldn't complete the lookup right now: {exc} Please try again later.")
@@ -159,7 +199,15 @@ async def fwacheck_prefix(ctx: commands.Context, playertag: str = None):
         await ctx.reply("Usage: `!fwacheck <playertag>` — e.g. `!fwacheck #9GQCYLYRC`")
         return
 
+<<<<<<< HEAD
     send = make_sender(ctx.reply)
+=======
+    async def send(**kwargs):
+        if "embed" in kwargs:
+            await ctx.reply(embed=kwargs["embed"])
+        else:
+            await ctx.reply(kwargs.get("content", ""))
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
     async with ctx.typing():
         await handle_fwacheck(send, playertag)
@@ -178,6 +226,7 @@ async def fwacheck_prefix_error(ctx: commands.Context, error: commands.CommandEr
         await ctx.reply("⚠️ Something went wrong running that command.")
 
 
+<<<<<<< HEAD
 @bot.tree.command(name="fwacheck", description="Check if a Clash of Clans player is FWA banned")
 @app_commands.describe(playertag="Clash of Clans player tag, e.g. #9GQCYLYRC")
 @app_commands.checks.cooldown(rate=1, per=COOLDOWN_SECONDS)
@@ -185,10 +234,38 @@ async def fwacheck_slash(interaction: discord.Interaction, playertag: str):
     await interaction.response.defer()
 
     send = make_sender(interaction.followup.send)
+=======
+_slash_cooldowns: dict[int, float] = {}
+
+
+@bot.tree.command(name="fwacheck", description="Check if a Clash of Clans player is FWA banned")
+@app_commands.describe(playertag="Clash of Clans player tag, e.g. #9GQCYLYRC")
+async def fwacheck_slash(interaction: discord.Interaction, playertag: str):
+    loop = asyncio.get_running_loop()
+    now = loop.time()
+    user_id = interaction.user.id
+    last_used = _slash_cooldowns.get(user_id)
+    if last_used is not None and (now - last_used) < COOLDOWN_SECONDS:
+        remaining = COOLDOWN_SECONDS - (now - last_used)
+        await interaction.response.send_message(
+            f"⏳ Slow down! Try again in {remaining:.0f}s.", ephemeral=True
+        )
+        return
+    _slash_cooldowns[user_id] = now
+
+    await interaction.response.defer()
+
+    async def send(**kwargs):
+        if "embed" in kwargs:
+            await interaction.followup.send(embed=kwargs["embed"])
+        else:
+            await interaction.followup.send(kwargs.get("content", ""))
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
     await handle_fwacheck(send, playertag)
 
 
+<<<<<<< HEAD
 @bot.tree.error
 async def on_app_command_error(
     interaction: discord.Interaction, error: app_commands.AppCommandError
@@ -218,6 +295,14 @@ async def on_ready():
         synced = await bot.tree.sync()
         logger.info("Synced %d slash command(s)", len(synced))
         _synced = True
+=======
+@bot.event
+async def on_ready():
+    logger.info("Logged in as %s (id=%s)", bot.user, bot.user.id if bot.user else "?")
+    try:
+        synced = await bot.tree.sync()
+        logger.info("Synced %d slash command(s)", len(synced))
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     except Exception:
         logger.exception("Failed to sync slash commands")
 
@@ -228,11 +313,14 @@ def main():
             "DISCORD_BOT_TOKEN is not set. Add it to Replit Secrets before starting the bot."
         )
         sys.exit(1)
+<<<<<<< HEAD
     if not os.environ.get("SCRAPERAPI_KEY"):
         logger.warning(
             "SCRAPERAPI_KEY not set — Cloudflare-blocked lookups will fail without the "
             "final fallback tier."
         )
+=======
+>>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     bot.run(TOKEN, log_handler=None)
 
 
