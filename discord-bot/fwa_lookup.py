@@ -14,11 +14,8 @@ import logging
 import os
 import re
 import sys
-<<<<<<< HEAD
 import threading
 import time
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 import urllib.parse
 from dataclasses import dataclass
 from typing import Optional
@@ -51,15 +48,11 @@ REQUEST_TIMEOUT = 15
 SCRAPERAPI_URL = "https://api.scraperapi.com/"
 SCRAPERAPI_TIMEOUT = 70
 
-<<<<<<< HEAD
 SCRAPINGANT_URL = "https://api.scrapingant.com/v2/general"
 SCRAPINGANT_TIMEOUT = 70
 
 TAG_RE = re.compile(r"^[0289PYLQGRJCUV]{3,12}$")
 TAG_ALLOWED_CHARS = "0289PYLQGRJCUV"
-=======
-TAG_RE = re.compile(r"^[A-Z0-9]{3,12}$")
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 CLOUDFLARE_MARKERS = (
     "just a moment",
@@ -70,7 +63,6 @@ CLOUDFLARE_MARKERS = (
     "enable javascript and cookies to continue",
 )
 
-<<<<<<< HEAD
 _API_KEY_PARAM_RE = re.compile(r"(api_key|x-api-key)=[^&\s]+", re.IGNORECASE)
 
 
@@ -86,8 +78,6 @@ def redact_api_key(text: str) -> str:
     """
     return _API_KEY_PARAM_RE.sub(r"\1=***REDACTED***", text)
 
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 class FwaLookupError(Exception):
     """Raised when the lookup cannot be completed (site down, blocked, etc.)."""
@@ -112,19 +102,14 @@ def normalize_tag(raw_tag: str) -> str:
         tag = tag[1:]
     tag = tag.strip()
     if not tag or not TAG_RE.match(tag):
-<<<<<<< HEAD
         raise ValueError(
             f"'{raw_tag}' doesn't look like a valid Clash of Clans player tag "
             f"(only these characters are allowed: {TAG_ALLOWED_CHARS})"
         )
-=======
-        raise ValueError(f"'{raw_tag}' doesn't look like a valid Clash of Clans player tag")
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     return tag
 
 
 def _looks_like_cloudflare_challenge(html: str, status_code: int) -> bool:
-<<<<<<< HEAD
     """
     A 403/503 alone doesn't necessarily mean Cloudflare blocked us — only
     treat it as a Cloudflare challenge if the body also contains one of the
@@ -132,10 +117,6 @@ def _looks_like_cloudflare_challenge(html: str, status_code: int) -> bool:
     escalating through cloudscraper/ScraperAPI/ScrapingAnt won't fix it
     (it just burns paid quota for no benefit).
     """
-=======
-    if status_code in (403, 503):
-        return True
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     lowered = html.lower()
     return any(marker in lowered for marker in CLOUDFLARE_MARKERS)
 
@@ -160,14 +141,11 @@ def _fetch_with_scraperapi(url: str) -> tuple[int, str]:
     if not api_key:
         raise FwaLookupError("SCRAPERAPI_KEY is not configured")
 
-<<<<<<< HEAD
     # ScraperAPI only supports authenticating via this `api_key` query
     # param (no header-based auth option) — it *will* end up in
     # `request_url` and therefore in any exception raised by this request.
     # Never log that exception (or this URL) without running it through
     # redact_api_key() first.
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     params = {
         "api_key": api_key,
         "url": url,
@@ -178,7 +156,6 @@ def _fetch_with_scraperapi(url: str) -> tuple[int, str]:
     return resp.status_code, resp.text
 
 
-<<<<<<< HEAD
 def _fetch_with_scrapingant(url: str) -> tuple[int, str]:
     api_key = os.environ.get("SCRAPINGANT_API_KEY")
     if not api_key:
@@ -198,8 +175,6 @@ def _fetch_with_scrapingant(url: str) -> tuple[int, str]:
     return resp.status_code, resp.text
 
 
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 def fetch_member_page(tag: str) -> str:
     """
     Fetch the member.php page for the given (already normalized) tag.
@@ -210,7 +185,6 @@ def fetch_member_page(tag: str) -> str:
       3. ScraperAPI (with render=true), if (2) failed or returned a challenge
          page. Requires SCRAPERAPI_KEY to be set; skipped (with a warning)
          if it isn't.
-<<<<<<< HEAD
       4. ScrapingAnt (with browser=true), used as a backup if ScraperAPI
          fails or its credits/quota are exhausted. Requires
          SCRAPINGANT_API_KEY to be set; skipped (with a warning) if it isn't.
@@ -224,11 +198,6 @@ def fetch_member_page(tag: str) -> str:
     # future feature ever accepts a URL from a user, it must NOT be routed
     # through this function or _fetch_with_scraperapi/_fetch_with_scrapingant.
     assert TAG_RE.match(tag), "fetch_member_page requires an already-normalized tag"
-=======
-
-    Raises FwaLookupError if all available attempts fail.
-    """
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     url = f"{BASE_URL}?tag={tag}"
 
     try:
@@ -240,11 +209,8 @@ def fetch_member_page(tag: str) -> str:
         requests_ok = True
 
     if requests_ok and not _looks_like_cloudflare_challenge(html, status_code):
-<<<<<<< HEAD
         if status_code in (403, 503):
             raise FwaLookupError(f"Site returned an unexpected error ({status_code})")
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         if status_code >= 500:
             raise FwaLookupError(f"Site returned server error {status_code}")
         return html
@@ -259,25 +225,18 @@ def fetch_member_page(tag: str) -> str:
         cloudscraper_ok = False
 
     if cloudscraper_ok and not _looks_like_cloudflare_challenge(html, status_code):
-<<<<<<< HEAD
         if status_code in (403, 503):
             raise FwaLookupError(f"Site returned an unexpected error ({status_code})")
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         if status_code >= 400:
             raise FwaLookupError(f"Site returned error {status_code}")
         return html
 
     # Fall back to ScraperAPI
-<<<<<<< HEAD
     scraperapi_ok = False
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     if not os.environ.get("SCRAPERAPI_KEY"):
         logger.warning(
             "SCRAPERAPI_KEY is not set; skipping ScraperAPI fallback for tag %s", tag
         )
-<<<<<<< HEAD
     else:
         try:
             status_code, html = _fetch_with_scraperapi(url)
@@ -313,14 +272,11 @@ def fetch_member_page(tag: str) -> str:
         logger.warning(
             "SCRAPINGANT_API_KEY is not set; skipping ScrapingAnt fallback for tag %s", tag
         )
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
         )
 
     try:
-<<<<<<< HEAD
         status_code, html = _fetch_with_scrapingant(url)
     except requests.RequestException as exc:
         # ScrapingAnt's key is now sent via header (see
@@ -330,16 +286,10 @@ def fetch_member_page(tag: str) -> str:
         logger.warning(
             "ScrapingAnt request failed for tag %s: %s", tag, redact_api_key(str(exc))
         )
-=======
-        status_code, html = _fetch_with_scraperapi(url)
-    except requests.RequestException:
-        logger.warning("ScraperAPI request failed for tag %s", tag, exc_info=True)
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
         )
 
-<<<<<<< HEAD
     if status_code in (403, 503) and not _looks_like_cloudflare_challenge(html, status_code):
         raise FwaLookupError(f"Site returned an unexpected error ({status_code})")
 
@@ -349,11 +299,6 @@ def fetch_member_page(tag: str) -> str:
             status_code,
             tag,
             redact_api_key(html[:300]),
-=======
-    if status_code >= 400:
-        logger.warning(
-            "ScraperAPI returned status %s for tag %s: %s", status_code, tag, html[:300]
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         )
         raise FwaLookupError(
             "The FWA lookup site is behind a Cloudflare check that couldn't be bypassed."
@@ -378,7 +323,6 @@ _NOT_FOUND_KEYWORDS = (
 )
 
 
-<<<<<<< HEAD
 def _get_main_content_text(soup: BeautifulSoup) -> tuple[str, bool]:
     """
     Return (text, used_fallback) for the "main content" region of the page.
@@ -402,8 +346,6 @@ def _get_main_content_text(soup: BeautifulSoup) -> tuple[str, bool]:
     return soup.get_text(" ", strip=True), True
 
 
-=======
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     """
     Parse the member.php HTML for player name + ban status.
@@ -412,7 +354,6 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     deliberately layered:
       1. Look for common structured elements (tables, definition lists,
          elements with class/id hints like 'name', 'status', 'ban').
-<<<<<<< HEAD
       2. Fall back to scanning the visible text of the main content region
          for ban/not-found keywords (falling back further to the whole
          page's text only if no main content region can be identified).
@@ -421,10 +362,6 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     page can't be confidently classified either way — reporting a clean
     result on a page we don't understand is the worst failure mode for a
     ban-checking tool.
-=======
-      2. Fall back to scanning the visible page text for ban/not-found
-         keywords.
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     """
     soup = BeautifulSoup(html, "html.parser")
     page_text = soup.get_text(separator=" ", strip=True)
@@ -433,7 +370,6 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     if not page_text or len(page_text) < 20:
         raise FwaLookupError("Received an empty page from the FWA lookup site.")
 
-<<<<<<< HEAD
     main_text, used_fallback = _get_main_content_text(soup)
     if used_fallback:
         logger.warning(
@@ -444,21 +380,13 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     lowered_main_text = main_text.lower()
 
     if any(keyword in lowered_main_text for keyword in _NOT_FOUND_KEYWORDS):
-=======
-    if any(keyword in lowered_text for keyword in _NOT_FOUND_KEYWORDS):
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         return FwaLookupResult(tag=tag, source_url=source_url, found=False)
 
     player_name = _extract_player_name(soup, page_text)
 
-<<<<<<< HEAD
     banned: Optional[bool] = None
     reason = None
     confidently_not_banned = False
-=======
-    banned = None
-    reason = None
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
     ban_el = soup.find(
         lambda el: el.name in ("td", "span", "div", "li", "p", "b", "strong")
@@ -467,7 +395,6 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     )
     if ban_el is not None:
         ban_text = ban_el.get_text(" ", strip=True)
-<<<<<<< HEAD
         lowered_ban_text = ban_text.lower()
         if "not banned" in lowered_ban_text:
             banned = False
@@ -519,26 +446,6 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
             reason = None
 
     if player_name is None and confidently_not_banned and not any(
-=======
-        banned = "banned" in ban_text.lower() and "not banned" not in ban_text.lower()
-        reason = ban_text if banned else None
-    else:
-        table_row_text = _find_labelled_row_text(soup, ("status", "ban", "banned"))
-        if table_row_text is not None:
-            banned = "banned" in table_row_text.lower() and "not banned" not in table_row_text.lower()
-            reason = table_row_text if banned else None
-
-    if banned is None:
-        if "not banned" in lowered_text or "no ban" in lowered_text:
-            banned = False
-        elif any(keyword in lowered_text for keyword in _BAN_KEYWORDS):
-            banned = True
-            reason = _extract_snippet_around(page_text, "ban")
-        else:
-            banned = False
-
-    if player_name is None and banned is False and not any(
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
         keyword in lowered_text for keyword in _BAN_KEYWORDS
     ) and "player" not in lowered_text and "clan" not in lowered_text:
         # Page doesn't look like a real member page at all.
@@ -554,7 +461,6 @@ def parse_member_page(html: str, tag: str, source_url: str) -> FwaLookupResult:
     )
 
 
-<<<<<<< HEAD
 _NAME_LABEL_RE = re.compile(r"^\s*names?\s*:?\s*$", re.IGNORECASE)
 _NAME_TEXT_RE = re.compile(
     r"\bnames?\s*:\s*(.{1,40}?)(?=\s*(?:this player has changed|current clan|synchronized|donates|town hall|rank|$))",
@@ -589,9 +495,6 @@ def _extract_name_after_label(soup: BeautifulSoup) -> Optional[str]:
 
 
 _SITE_BRAND_WORDS = ("fwa", "chocolateclash", "farm")
-=======
-_NAME_TEXT_RE = re.compile(r"\bname\s*:\s*([^\s():]+)", re.IGNORECASE)
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 
 def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
@@ -599,7 +502,6 @@ def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
         el = soup.find(tag_name)
         if el:
             text = el.get_text(" ", strip=True)
-<<<<<<< HEAD
             lowered = text.lower()
             if (
                 text
@@ -612,11 +514,6 @@ def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
     if label_name:
         return label_name
 
-=======
-            if text and len(text) < 60:
-                return text
-
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     name_el = soup.find(
         lambda el: el.name in ("td", "span", "div")
         and el.get("class")
@@ -631,15 +528,9 @@ def _extract_player_name(soup: BeautifulSoup, page_text: str) -> Optional[str]:
     if row_text:
         return row_text
 
-<<<<<<< HEAD
     # Fall back to scanning the rendered page text for a "Name: X" / "Names: X"
     # pattern, since this site often renders member details as plain text
     # rather than structured table rows/spans.
-=======
-    # Fall back to scanning the rendered page text for a "Name: X" pattern,
-    # since this site often renders member details as plain text rather
-    # than structured table rows/spans.
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
     match = _NAME_TEXT_RE.search(page_text)
     if match:
         candidate = match.group(1).strip()
@@ -668,7 +559,6 @@ def _find_labelled_row_text(soup: BeautifulSoup, labels: tuple[str, ...]) -> Opt
     return None
 
 
-<<<<<<< HEAD
 _MEMBER_NOTES_LABEL_RE = re.compile(r"member\s*notes", re.IGNORECASE)
 _MAX_REASON_LENGTH = 300
 
@@ -744,35 +634,6 @@ def lookup_fwa_status(raw_tag: str) -> FwaLookupResult:
     result = parse_member_page(html, tag, source_url)
     _set_cached_result(tag, result)
     return result
-=======
-def _extract_snippet_around(text: str, keyword: str, radius: int = 40) -> str:
-    lowered = text.lower()
-    idx = lowered.find(keyword)
-    if idx == -1:
-        snippet = text[:120]
-    else:
-        start = max(0, idx - radius)
-        end = min(len(text), idx + radius)
-        snippet = text[start:end].strip()
-
-    # The site often runs several unrelated fields together as plain text
-    # (e.g. "... ( BANNED! ) ( Open Ingame ) Name: X Current Clan: Y ..."),
-    # and the player's name is already shown in its own embed field, so
-    # trim off anything from "Name:" onward to avoid duplicating/cluttering.
-    name_idx = re.search(r"\bname\s*:", snippet, re.IGNORECASE)
-    if name_idx:
-        snippet = snippet[: name_idx.start()].strip()
-
-    return snippet or text[:120]
-
-
-def lookup_fwa_status(raw_tag: str) -> FwaLookupResult:
-    """High level entry point: normalize tag, fetch page, parse result."""
-    tag = normalize_tag(raw_tag)
-    source_url = f"{BASE_URL}?tag={tag}"
-    html = fetch_member_page(tag)
-    return parse_member_page(html, tag, source_url)
->>>>>>> bd515d01c99f82a70355c6e859cfe1c30bfacbfd
 
 
 if __name__ == "__main__":
